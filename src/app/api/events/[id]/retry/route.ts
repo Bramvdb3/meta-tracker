@@ -33,7 +33,7 @@ export async function POST(
   }
 
   const accessToken = decrypt(log.store.metaAccessTokenEnc);
-  const payload = log.requestPayload as CapiEvent | CapiEvent[];
+  const payload = log.requestPayload as unknown as CapiEvent | CapiEvent[];
   const events: CapiEvent[] = Array.isArray(payload) ? payload : [payload];
 
   const res = await sendToMetaCapi({
