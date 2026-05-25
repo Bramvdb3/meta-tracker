@@ -1,0 +1,276 @@
+// schema.prisma — Meta Tracker MVP (v3)
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─────────────────────────── USERS ───────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  stores       Store[]
+  settings     Setting[]
+}
+
+// ─────────────────────────── STORES ──────────────────────────
+
+model Store {
+  id                       String   @id @default(uuid())
+  userId                   String
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name                     String
+  domain                   String   @unique
+  currency                 String   @default("EUR")
+
+  shopifyWebhookSecretEnc  String
+  shopifyApiKey            String?
+  shopifyApiSecretEnc      String?
+
+  metaPixelId              String
+  metaAccessTokenEnc       String
+  metaTestEventCode        String?
+
+  active                   Boolean  @default(true)
+
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  events                   Event[]
+  orders                   Order[]
+  metaEventLogs            MetaEventLog[]
+  sessions                 Session[]
+
+  @@index([userId])
+}
+
+// ─────────────────────── TRACKING SESSIONS ───────────────────
+
+model Session {
+  id            String   @id @default(uuid())
+  storeId       String
+  store         Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  clientId      String
+  fbp           String?
+  fbc           String?
+  fbclid        String?
+
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+
+  ipAddress     String?
+  userAgent     String?
+  landingUrl    String?
+  referrer      String?
+
+  emailHash     String?
+  phoneHash     String?
+
+  events        Event[]
+
+  @@unique([storeId, clientId])
+  @@index([storeId, fbp])
+  @@index([storeId, fbc])
+}
+
+// ─────────────────────────── EVENTS ──────────────────────────
+
+model Event {
+  id            String   @id @default(uuid())
+  storeId       String
+  store         Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  sessionId     String?
+  session       Session? @relation(fields: [sessionId], references: [id])
+
+  eventId       String
+  eventName     EventName
+  eventTime     DateTime
+  source        EventSource
+
+  url           String?
+  referrer      String?
+  userAgent     String?
+  ipAddress     String?
+
+  fbp           String?
+  fbc           String?
+  fbclid        String?
+
+  productId     String?
+  productName   String?
+  contentIds    String[]
+  value         Decimal? @db.Decimal(12, 2)
+  currency      String?
+  numItems      Int?
+
+  emailHash     String?
+  phoneHash     String?
+  firstNameHash String?
+  lastNameHash  String?
+  cityHash      String?
+  stateHash     String?
+  zipHash       String?
+  countryHash   String?
+
+  rawPayload    Json?
+
+  // Reason why this event was NOT forwarded to Meta CAPI by /api/collect.
+  // Null = forwarded (or applicable for forwarding). Set to:
+  //   "PURCHASE_FORWARDED_BY_SHOPIFY_WEBHOOK" — for Purchase events received
+  //   from the Shopify Custom Pixel; the orders/paid webhook is the only
+  //   server-side CAPI source for Purchase.
+  capiForwardingSkippedReason String?
+
+  createdAt     DateTime @default(now())
+
+  metaLogs      MetaEventLog[]
+
+  @@unique([storeId, eventId])
+  @@index([storeId, eventName, eventTime])
+  @@index([storeId, createdAt])
+}
+
+enum EventName {
+  PageView
+  ViewContent
+  AddToCart
+  InitiateCheckout
+  Purchase
+}
+
+enum EventSource {
+  BROWSER
+  WEBHOOK
+  SERVER
+}
+
+// ─────────────────────────── ORDERS ──────────────────────────
+
+model Order {
+  id                   String   @id @default(uuid())
+  storeId              String
+  store                Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  shopifyOrderId       String
+  orderNumber          String?
+  totalPrice           Decimal  @db.Decimal(12, 2)
+  subtotalPrice        Decimal? @db.Decimal(12, 2)
+  currency             String
+
+  emailHash            String?
+  phoneHash            String?
+  firstNameHash        String?
+  lastNameHash         String?
+  cityHash             String?
+  stateHash            String?
+  zipHash              String?
+  countryHash          String?
+
+  clientIp             String?
+  clientUserAgent      String?
+  fbp                  String?
+  fbc                  String?
+  fbclid               String?
+  clientId             String?
+  purchaseEventId      String?
+  landingUrl           String?
+
+  financialStatus      String?
+  fulfillmentStatus    String?
+
+  placedAt             DateTime
+
+  rawPayloadRedacted   Json
+
+  capiStatus           CapiStatus  @default(PENDING)
+  capiEventIdUsed      String?
+  matchSource          MatchSource?
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  metaLogs             MetaEventLog[]
+
+  @@unique([storeId, shopifyOrderId])
+  @@index([storeId, placedAt])
+  @@index([storeId, capiStatus])
+  @@index([storeId, matchSource])
+}
+
+enum CapiStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  DEAD_LETTERED
+  SKIPPED
+}
+
+enum MatchSource {
+  CART_ATTRIBUTES
+  SHOPIFY_CLIENT_DETAILS
+  CUSTOMER_DATA_ONLY
+  FALLBACK_ORDER_ID
+}
+
+// ────────────────────── META EVENT LOGS ──────────────────────
+
+model MetaEventLog {
+  id              String   @id @default(uuid())
+  storeId         String
+  store           Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  eventId         String
+  eventName       EventName
+
+  relatedEventId  String?
+  relatedEvent    Event?   @relation(fields: [relatedEventId], references: [id])
+  relatedOrderId  String?
+  relatedOrder    Order?   @relation(fields: [relatedOrderId], references: [id])
+
+  requestPayload  Json
+  responseStatus  Int?
+  responseBody    Json?
+  eventsReceived  Int?
+  fbtraceId       String?
+  errorMessage    String?
+
+  attempt         Int      @default(1)
+  success         Boolean  @default(false)
+  testMode        Boolean  @default(false)
+
+  nextRetryAt     DateTime?
+  deadLettered    Boolean  @default(false)
+
+  sentAt          DateTime @default(now())
+
+  @@index([storeId, sentAt])
+  @@index([storeId, eventName, success])
+  @@index([eventId])
+  @@index([success, deadLettered, nextRetryAt])
+}
+
+// ────────────────────────── SETTINGS ─────────────────────────
+
+model Setting {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+}
