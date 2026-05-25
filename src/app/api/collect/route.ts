@@ -125,12 +125,10 @@ export async function POST(req: NextRequest) {
     return withCors(NextResponse.json({ error: 'unknown_store' }, { status: 404 }));
   }
 
-  const origin = req.headers.get('origin') || req.headers.get('referer') || '';
-  if (origin && !originMatchesDomain(origin, store.domain)) {
-    return withCors(
-      NextResponse.json({ error: 'origin_not_allowed' }, { status: 403 })
-    );
-  }
+  // Origin check disabled: a Shopify store can have multiple frontends
+  // (myshopify.com subdomain AND a custom domain). Store.domain holds the
+  // myshopify.com one for webhook matching, but the browser fetch comes
+  // from the custom domain. Auth is store_id (UUID) + rate limiting.
 
   const userAgent = req.headers.get('user-agent') ?? undefined;
   const eventTime = data.event_time ? new Date(data.event_time * 1000) : new Date();
