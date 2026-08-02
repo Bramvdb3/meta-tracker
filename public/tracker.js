@@ -348,7 +348,42 @@
     safe(trackEvent, 'collect:vc')('ViewContent', extras);
   }
 
+  // ── AddToCart de-duplication ────────────────────────────────────────────
+  // A single "Add to cart" click can be observed by more than one of our
+  // hooks at the same time: Shopify themes often POST /cart/add.js via fetch
+  // while the button also lives inside a <form action="/cart/add">, and some
+  // themes additionally use XHR. Without a guard that produces 2–3 AddToCart
+  // events for one user action, which inflates Meta's AddToCart count and
+  // wrecks the ATC→Purchase ratio.
+  //
+  // Guard: ignore a new AddToCart if an identical one (same product, or any
+  // product when we couldn't resolve an id) already fired within the window.
+  var ATC_DEDUP_WINDOW_MS = 2500;
+  var lastAtcKey = null;
+  var lastAtcAt = 0;
+
+  function atcKeyFor(item) {
+    try {
+      if (item && item.product_id != null) return 'p' + String(item.product_id);
+      if (item && item.id != null) return 'v' + String(item.id);
+    } catch (e) {}
+    return 'unknown';
+  }
+
   function trackAddToCart(item) {
+    var key = atcKeyFor(item);
+    var now = Date.now();
+
+    // Same product (or unresolved product) within the window → duplicate hook.
+    if (now - lastAtcAt < ATC_DEDUP_WINDOW_MS) {
+      if (key === lastAtcKey || key === 'unknown' || lastAtcKey === 'unknown') {
+        log('AddToCart deduped (key=' + key + ', ' + (now - lastAtcAt) + 'ms since last)');
+        return;
+      }
+    }
+    lastAtcKey = key;
+    lastAtcAt = now;
+
     safe(writeCartAttributes, 'writeCartAttributes:atc')();
 
     var extras = {};
