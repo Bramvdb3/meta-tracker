@@ -78,8 +78,10 @@ interface ShopifyOrder {
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
-  const hmacHeader = req.headers.get('x-shopify-hmac-sha256');
-  const shopDomain = req.headers.get('x-shopify-shop-domain');
+  // X-MT-* headers are used by non-Shopify platforms (WooCommerce) that post
+  // orders in the Shopify order shape — see /api/webhooks/woocommerce/orders.
+  const hmacHeader = req.headers.get('x-shopify-hmac-sha256') ?? req.headers.get('x-mt-hmac-sha256');
+  const shopDomain = req.headers.get('x-shopify-shop-domain') ?? req.headers.get('x-mt-shop-domain');
   if (!shopDomain) {
     return NextResponse.json({ error: 'missing_shop_domain' }, { status: 400 });
   }

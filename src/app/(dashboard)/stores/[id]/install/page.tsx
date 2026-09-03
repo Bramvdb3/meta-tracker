@@ -26,6 +26,9 @@ export default async function InstallPage({
     process.env.APP_BASE_URL?.replace(/\/$/, '') ||
     'https://YOUR-TRACKER-DOMAIN';
 
+  const isWoo = !/myshopify\.com$/i.test(store.domain);
+  const wooTag = `<script async src="${baseUrl}/api/script/tracker-woo.js?store_id=${store.id}"></script>`;
+  const wooWebhookUrl = `${baseUrl}/api/webhooks/woocommerce/orders`;
   const themeTag = `<script async src="${baseUrl}/api/script/tracker.js?store_id=${store.id}"></script>`;
   const customPixelUrl = `${baseUrl}/api/script/custom-pixel.js?store_id=${store.id}`;
   const webhookUrl = `${baseUrl}/api/webhooks/shopify/orders`;
@@ -42,6 +45,17 @@ export default async function InstallPage({
         <h1 className="text-2xl font-semibold mt-1">Install instructions</h1>
         <p className="text-sm text-gray-500">{store.domain}</p>
       </div>
+
+      {isWoo && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 space-y-3">
+          <p className="font-medium">WooCommerce-store (domein zonder myshopify.com)</p>
+          <p>1. Script in de &lt;head&gt; van het thema (het Laurentide-thema doet dit zelf via Instellingen → Laurentide → Meta Tracker):</p>
+          <CopyBlock text={wooTag} />
+          <p>2. Order-webhook (server-to-server vanuit WordPress, gesigneerd met het webhook secret van deze store, headers <code>X-MT-Shop-Domain</code> + <code>X-MT-Hmac-Sha256</code>):</p>
+          <CopyBlock text={wooWebhookUrl} />
+          <p>3. Het domein van deze store moet exact gelijk zijn aan de site-hostname ({store.domain}). De Shopify-stappen hieronder zijn voor deze store niet nodig.</p>
+        </div>
+      )}
 
       <Section
         n={1}
