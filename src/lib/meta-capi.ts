@@ -55,7 +55,21 @@ export interface CapiResponse {
   errorMessage: string | null;
 }
 
+/**
+ * Several pixels per store: the store's Meta Pixel ID may hold more than one id,
+ * separated by commas or spaces (e.g. "1208083834834257,1154039037149931").
+ * Every event goes to every pixel with the same event_id (Meta dedups per pixel).
+ * The result of the FIRST pixel is returned (logging/retries stay as before).
+ */
 export async function sendToMetaCapi(req: CapiRequest): Promise<CapiResponse> {
+  const ids = String(req.pixelId).split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+  if (ids.length <= 1) return sendToOnePixel(req);
+  const results = await Promise.all(ids.map((id) => sendToOnePixel({ ...req, pixelId: id })));
+  results.slice(1).forEach((r, i) => { if (!r.ok) console.error(`[capi] extra pixel ${ids[i + 1]} failed: ${r.errorMessage}`); });
+  return results[0];
+}
+
+async function sendToOnePixel(req: CapiRequest): Promise<CapiResponse> {
   const url = `https://graph.facebook.com/${getApiVersion()}/${req.pixelId}/events?access_token=${encodeURIComponent(req.accessToken)}`;
   const payload: Record<string, unknown> = { data: req.events };
   if (req.testEventCode) payload.test_event_code = req.testEventCode;
